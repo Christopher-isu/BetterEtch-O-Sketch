@@ -1,118 +1,92 @@
-﻿Option Strict On
+﻿'ChristopherZ
+'Fall 2025
+'RCET3371
+'Better Etch-O-Sketch
+'https://github.com/Christopher-isu/BetterEtch-O-Sketch.git
+
+Option Strict On
 Option Explicit On
+Imports Microsoft.VisualBasic.Logging
 
-Imports System.IO.Ports
-' NOTE: We must ensure QyHandler is accessible here.
-
+''' <summary>
+''' The "Under the Hood" Diagnostic Form. 
+''' Displays raw serial traffic to verify hardware health and sensor stability.
+''' </summary>
 Public Class QyUI
-    ' Private ReadOnly handler As New QyHandler() <-- REMOVED!
+    ' Reference to the active handler created by the EtchASketch form
+    Private _handler As QyHandler
 
-    Private ReadOnly _handlerRef As QyHandler ' Reference to the main application's handler instance
-    Private testOutputValue As Byte = CByte(&HAA)
-
-    ' NEW: Constructor to accept the active QyHandler instance
-    Public Sub New(activeHandler As QyHandler)
-        InitializeComponent() ' Required for WinForms forms
-
-        ' Set the internal reference
-        _handlerRef = activeHandler
-
-        ' Ensure buttons irrelevant to diagnosis are disabled/removed if they exist
-        ' (Assuming btnConnect, btnRefresh, cboPorts were removed in designer)
-        If btnTestOutput IsNot Nothing Then
-            ' Only enable test output if connected when the form loads
-            btnTestOutput.Enabled = _handlerRef.IsConnected
-        End If
-
-        ' Initial state clear
-        ClearDataFields()
+    ''' <summary>
+    ''' Constructor: Requires an existing handler so we aren't opening two serial ports.
+    ''' </summary>
+    Public Sub New(h As QyHandler)
+        InitializeComponent()
+        _handler = h
     End Sub
+
+    ' =========================================================================
+    ' SECTION 1: EVENT SUBSCRIPTIONS
+    ' =========================================================================
 
     Private Sub QyUI_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-        ' Old RefreshPortList() logic is no longer needed here.
-
-        If _handlerRef.IsConnected Then
-            ' Only add handlers if a connection is active (or will be immediately activated by the main form)
-            AddHandler _handlerRef.DataUpdated, AddressOf Handler_DataUpdated
-            AddHandler _handlerRef.PacketLogged, AddressOf Handler_PacketLogged
-        End If
+        ' Subscribe to both the data flow and the raw packet log
+        AddHandler _handler.DataUpdated, AddressOf OnDataUpdated
+        AddHandler _handler.PacketLogged, AddressOf OnPacketLogged
     End Sub
 
-    ' The RefreshPortList and btnRefresh_Click are removed/not needed.
-    ' The btnConnect_Click is removed/not needed.
-
-    Private Sub btnTestOutput_Click(sender As Object, e As EventArgs) Handles btnTestOutput.Click
-        If Not _handlerRef.IsConnected Then
-            MessageBox.Show("Not connected.")
-            Return
-        End If
-
-        _handlerRef.SendDigitalOutput(testOutputValue)
-        ' Toggle the value
-        testOutputValue = If(testOutputValue = CByte(&HAA), CByte(&H55), CByte(&HAA))
-    End Sub
-
-    Private Sub btnClose_Click(sender As Object, e As EventArgs)
-        Me.Close()
-    End Sub
-
-    Private Sub btnStatus_Click(sender As Object, e As EventArgs) Handles btnStatus.Click
-        If Not _handlerRef.IsConnected Then
-            MessageBox.Show("Not connected.")
-            Return
-        End If
-
-        Dim response As String = _handlerRef.SendReadStatus()
-        MessageBox.Show("Status Response: " & response)
-    End Sub
-
-    Private Sub Handler_DataUpdated(analog1 As String, analog2 As String, digitalIn As String, digitalOut As String)
+    ''' <summary>
+    ''' Updates the "Data Boxes" in the UI with the latest hex values.
+    ''' </summary>
+    Private Sub OnDataUpdated(a1 As String, a2 As String, di As String, dou As String)
+        ' Ensure thread safety: QyHandler events fire on a background thread
         If Me.InvokeRequired Then
-            ' Use BeginInvoke for non-critical, UI-updating events
-            Me.BeginInvoke(New Action(Of String, String, String, String)(AddressOf Handler_DataUpdated),
-                             analog1, analog2, digitalIn, digitalOut)
+            Me.Invoke(New Action(Of String, String, String, String)(AddressOf OnDataUpdated), a1, a2, di, dou)
             Return
         End If
 
-        txtAnalog1.Text = analog1
-        txtAnalog2.Text = analog2
-        txtDigitalIn.Text = digitalIn
-        txtDigitalOut.Text = digitalOut
+        ' Update the read-only textboxes for the user to see
+        txtAnalog1.Text = a1
+        txtAnalog2.Text = a2
+        txtDigitalIn.Text = di
+        txtDigitalOut.Text = dou
     End Sub
 
-    Private Sub Handler_PacketLogged(sentHex As String, receivedHex As String)
+    ''' <summary>
+    ''' Appends raw Hex traffic to the scrolling log window.
+    ''' </summary>
+    Private Sub OnPacketLogged(sent As String, received As String)
         If Me.InvokeRequired Then
-            Me.BeginInvoke(New Action(Of String, String)(AddressOf Handler_PacketLogged),
-                             sentHex, receivedHex)
+            Me.Invoke(New Action(Of String, String)(AddressOf OnPacketLogged), sent, received)
             Return
         End If
 
-        Dim logEntry As String = "Sent: " & sentHex & " | Recv: " & receivedHex
-        lstPackets.Items.Insert(0, logEntry)
+        ' Format: [TX] 51 | [RX] 02 44
+        lstLog.Items.Add($"[TX] {sent} | [RX] {received}")
 
-        While lstPackets.Items.Count > 5
-            lstPackets.Items.RemoveAt(lstPackets.Items.Count - 1)
-        End While
+        ' Auto-scroll to the bottom of the log
+        lstLog.SelectedIndex = lstLog.Items.Count - 1
     End Sub
 
-    Private Sub ClearDataFields()
-        txtAnalog1.Text = "00 00"
-        txtAnalog2.Text = "00 00"
-        txtDigitalIn.Text = "00"
-        txtDigitalOut.Text = "00"
+    ' =========================================================================
+    ' SECTION 2: HARDWARE TESTING
+    ' =========================================================================
+
+    ''' <summary>
+    ''' Manually triggers a Digital Output command (LED test).
+    ''' </summary>
+    Private Sub btnSend_Click(sender As Object, e As EventArgs) Handles btnSend.Click
+        Try
+            ' Convert user-entered hex string (e.g., "FF") to a byte
+            Dim val As Byte = Convert.ToByte(txtSendHex.Text, 16)
+            _handler.SendDigitalOutput(val)
+        Catch
+            MessageBox.Show("Please enter a valid Hex byte (00-FF)")
+        End Try
     End Sub
 
-    Private Sub QyUI_FormClosing(sender As Object, e As FormClosingEventArgs) Handles Me.FormClosing
-        ' CRITICAL CHANGE: Do NOT disconnect the handler!
-        ' The handler instance belongs to the main form (EtchASketch).
-        If _handlerRef IsNot Nothing Then
-            Try
-                RemoveHandler _handlerRef.DataUpdated, AddressOf Handler_DataUpdated
-                RemoveHandler _handlerRef.PacketLogged, AddressOf Handler_PacketLogged
-            Catch
-                ' Ignore if handlers already removed
-            End Try
-        End If
-        ' The form closes, but the connection remains active in the main app.
+    Private Sub QyUI_FormClosing(sender As Object, e As FormClosingEventArgs) Handles MyBase.FormClosing
+        ' Unsubscribe to prevent memory leaks and background crashes
+        RemoveHandler _handler.DataUpdated, AddressOf OnDataUpdated
+        RemoveHandler _handler.PacketLogged, AddressOf OnPacketLogged
     End Sub
 End Class

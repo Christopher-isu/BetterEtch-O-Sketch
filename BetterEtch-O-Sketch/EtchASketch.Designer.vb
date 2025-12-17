@@ -24,6 +24,8 @@ Partial Class EtchASketch
     Private Sub InitializeComponent()
         Me.ButtonPanel = New System.Windows.Forms.Panel()
         Me.grpMode = New System.Windows.Forms.GroupBox()
+        Me.rbtnExternalMode = New System.Windows.Forms.RadioButton()
+        Me.rbtnMouseMode = New System.Windows.Forms.RadioButton()
         Me.ExitButton = New System.Windows.Forms.Button()
         Me.ClearButton = New System.Windows.Forms.Button()
         Me.DrawWaveformsButton = New System.Windows.Forms.Button()
@@ -46,10 +48,6 @@ Partial Class EtchASketch
         Me.lblStatus = New System.Windows.Forms.Label()
         Me.lblPortCaption = New System.Windows.Forms.Label()
         Me.lblPortValue = New System.Windows.Forms.Label()
-        Me.lblBaudCaption = New System.Windows.Forms.Label()
-        Me.lblBaudValue = New System.Windows.Forms.Label()
-        Me.rbtnExternalMode = New System.Windows.Forms.RadioButton()
-        Me.rbtnMouseMode = New System.Windows.Forms.RadioButton()
         Me.ButtonPanel.SuspendLayout()
         Me.grpMode.SuspendLayout()
         Me.MenuStrip1.SuspendLayout()
@@ -79,6 +77,28 @@ Partial Class EtchASketch
         Me.grpMode.TabIndex = 4
         Me.grpMode.TabStop = False
         Me.grpMode.Text = "Control"
+        '
+        'rbtnExternalMode
+        '
+        Me.rbtnExternalMode.AutoSize = True
+        Me.rbtnExternalMode.Location = New System.Drawing.Point(142, 15)
+        Me.rbtnExternalMode.Name = "rbtnExternalMode"
+        Me.rbtnExternalMode.Size = New System.Drawing.Size(108, 20)
+        Me.rbtnExternalMode.TabIndex = 5
+        Me.rbtnExternalMode.Text = "External (PIC)"
+        Me.rbtnExternalMode.UseVisualStyleBackColor = True
+        '
+        'rbtnMouseMode
+        '
+        Me.rbtnMouseMode.AutoSize = True
+        Me.rbtnMouseMode.Checked = True
+        Me.rbtnMouseMode.Location = New System.Drawing.Point(55, 15)
+        Me.rbtnMouseMode.Name = "rbtnMouseMode"
+        Me.rbtnMouseMode.Size = New System.Drawing.Size(69, 20)
+        Me.rbtnMouseMode.TabIndex = 4
+        Me.rbtnMouseMode.TabStop = True
+        Me.rbtnMouseMode.Text = "Mouse"
+        Me.rbtnMouseMode.UseVisualStyleBackColor = True
         '
         'ExitButton
         '
@@ -250,53 +270,11 @@ Partial Class EtchASketch
         Me.lblPortValue.TabIndex = 8
         Me.lblPortValue.Text = "n/a"
         '
-        'lblBaudCaption
-        '
-        Me.lblBaudCaption.AutoSize = True
-        Me.lblBaudCaption.Location = New System.Drawing.Point(649, 9)
-        Me.lblBaudCaption.Name = "lblBaudCaption"
-        Me.lblBaudCaption.Size = New System.Drawing.Size(42, 16)
-        Me.lblBaudCaption.TabIndex = 9
-        Me.lblBaudCaption.Text = "Baud:"
-        '
-        'lblBaudValue
-        '
-        Me.lblBaudValue.AutoSize = True
-        Me.lblBaudValue.Location = New System.Drawing.Point(695, 9)
-        Me.lblBaudValue.Name = "lblBaudValue"
-        Me.lblBaudValue.Size = New System.Drawing.Size(26, 16)
-        Me.lblBaudValue.TabIndex = 10
-        Me.lblBaudValue.Text = "n/a"
-        '
-        'rbtnExternalMode
-        '
-        Me.rbtnExternalMode.AutoSize = True
-        Me.rbtnExternalMode.Location = New System.Drawing.Point(142, 15)
-        Me.rbtnExternalMode.Name = "rbtnExternalMode"
-        Me.rbtnExternalMode.Size = New System.Drawing.Size(108, 20)
-        Me.rbtnExternalMode.TabIndex = 5
-        Me.rbtnExternalMode.Text = "External (PIC)"
-        Me.rbtnExternalMode.UseVisualStyleBackColor = True
-        '
-        'rbtnMouseMode
-        '
-        Me.rbtnMouseMode.AutoSize = True
-        Me.rbtnMouseMode.Checked = True
-        Me.rbtnMouseMode.Location = New System.Drawing.Point(55, 15)
-        Me.rbtnMouseMode.Name = "rbtnMouseMode"
-        Me.rbtnMouseMode.Size = New System.Drawing.Size(69, 20)
-        Me.rbtnMouseMode.TabIndex = 4
-        Me.rbtnMouseMode.TabStop = True
-        Me.rbtnMouseMode.Text = "Mouse"
-        Me.rbtnMouseMode.UseVisualStyleBackColor = True
-        '
         'EtchASketch
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 16.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(800, 483)
-        Me.Controls.Add(Me.lblBaudValue)
-        Me.Controls.Add(Me.lblBaudCaption)
         Me.Controls.Add(Me.lblPortValue)
         Me.Controls.Add(Me.lblPortCaption)
         Me.Controls.Add(Me.lblStatus)
@@ -338,8 +316,6 @@ Partial Class EtchASketch
     Friend WithEvents lblStatus As Label
     Friend WithEvents lblPortCaption As Label
     Friend WithEvents lblPortValue As Label
-    Friend WithEvents lblBaudCaption As Label
-    Friend WithEvents lblBaudValue As Label
     Friend WithEvents mnuConnect As ToolStripMenuItem
     Friend WithEvents mnuDisconnect As ToolStripMenuItem
     Friend WithEvents mnuDiag As ToolStripMenuItem
