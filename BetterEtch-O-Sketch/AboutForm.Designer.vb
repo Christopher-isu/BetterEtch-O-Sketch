@@ -27,13 +27,14 @@ Partial Class AboutForm
         Me.Label3 = New System.Windows.Forms.Label()
         Me.Label4 = New System.Windows.Forms.Label()
         Me.Label5 = New System.Windows.Forms.Label()
+        Me.btnOK = New System.Windows.Forms.Button()
         Me.SuspendLayout()
         '
         'Label1
         '
         Me.Label1.AutoSize = True
         Me.Label1.Font = New System.Drawing.Font("Roboto Slab", 16.2!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Label1.Location = New System.Drawing.Point(46, 88)
+        Me.Label1.Location = New System.Drawing.Point(48, 35)
         Me.Label1.Name = "Label1"
         Me.Label1.Size = New System.Drawing.Size(293, 37)
         Me.Label1.TabIndex = 0
@@ -43,7 +44,7 @@ Partial Class AboutForm
         '
         Me.Label2.AutoSize = True
         Me.Label2.Font = New System.Drawing.Font("Roboto Slab", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Label2.Location = New System.Drawing.Point(173, 166)
+        Me.Label2.Location = New System.Drawing.Point(175, 113)
         Me.Label2.Name = "Label2"
         Me.Label2.Size = New System.Drawing.Size(40, 27)
         Me.Label2.TabIndex = 0
@@ -53,7 +54,7 @@ Partial Class AboutForm
         '
         Me.Label3.AutoSize = True
         Me.Label3.Font = New System.Drawing.Font("Roboto Slab", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Label3.Location = New System.Drawing.Point(123, 203)
+        Me.Label3.Location = New System.Drawing.Point(125, 150)
         Me.Label3.Name = "Label3"
         Me.Label3.Size = New System.Drawing.Size(140, 27)
         Me.Label3.TabIndex = 0
@@ -63,7 +64,7 @@ Partial Class AboutForm
         '
         Me.Label4.AutoSize = True
         Me.Label4.Font = New System.Drawing.Font("Roboto Slab", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Label4.Location = New System.Drawing.Point(172, 240)
+        Me.Label4.Location = New System.Drawing.Point(174, 187)
         Me.Label4.Name = "Label4"
         Me.Label4.Size = New System.Drawing.Size(43, 27)
         Me.Label4.TabIndex = 0
@@ -73,17 +74,27 @@ Partial Class AboutForm
         '
         Me.Label5.AutoSize = True
         Me.Label5.Font = New System.Drawing.Font("Roboto Slab", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
-        Me.Label5.Location = New System.Drawing.Point(140, 277)
+        Me.Label5.Location = New System.Drawing.Point(142, 224)
         Me.Label5.Name = "Label5"
         Me.Label5.Size = New System.Drawing.Size(107, 27)
         Me.Label5.TabIndex = 0
         Me.Label5.Text = "RCET3371"
+        '
+        'btnOK
+        '
+        Me.btnOK.Location = New System.Drawing.Point(130, 280)
+        Me.btnOK.Name = "btnOK"
+        Me.btnOK.Size = New System.Drawing.Size(135, 61)
+        Me.btnOK.TabIndex = 1
+        Me.btnOK.Text = "OK"
+        Me.btnOK.UseVisualStyleBackColor = True
         '
         'AboutForm
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 16.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(382, 353)
+        Me.Controls.Add(Me.btnOK)
         Me.Controls.Add(Me.Label5)
         Me.Controls.Add(Me.Label4)
         Me.Controls.Add(Me.Label3)
@@ -103,4 +114,5 @@ Partial Class AboutForm
     Friend WithEvents Label3 As Label
     Friend WithEvents Label4 As Label
     Friend WithEvents Label5 As Label
+    Friend WithEvents btnOK As Button
 End Class

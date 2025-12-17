@@ -1,139 +1,125 @@
-﻿'ChristopherZ
+﻿'Christopher Z
 'Fall 2025
-'RCET3371
-'Better Etch-O-Sketch
+'Better Etch-O-Sketch Project
 'https://github.com/Christopher-isu/BetterEtch-O-Sketch.git
 
-Option Strict On ' Ensures type safety and prevents hidden data loss during conversions
-Option Explicit On ' Forces variable declaration to prevent spelling-based logic bugs
+Option Strict On ' Enforces rigorous type checking to prevent implicit data loss
+Option Explicit On ' Requires all variables to be declared prior to use
 
-Imports System.Threading ' Used for Thread.Sleep in the shake animation
-Imports System.IO.Ports  ' Used for SerialPort.GetPortNames
-Imports System.Drawing   ' Used for GDI+ drawing (Graphics, Pen, Color)
+Imports System.Threading ' Necessary for thread-based pauses (Shake effect)
+Imports System.IO.Ports  ' Access to serial port enumeration
+Imports System.Drawing   ' Core GDI+ library for all canvas drawing operations
 
-''' <summary>
-''' Main UI Logic for the Better Etch-O-Sketch.
-''' Handles coordinate mapping, trig waveform generation, and Serial communication events.
-''' </summary>
+' =========================================================================================
+' CLASS: EtchASketch
+' PURPOSE: The primary Controller for the application. It manages the drawing canvas,
+'          processes hardware inputs via the QyHandler, and handles UI state logic 
+'          for both Mouse and External (PIC) control modes.
+' =========================================================================================
 Public Class EtchASketch
-
-    ' =========================================================================
-    ' SECTION 1: FIELD DEFINITIONS & CONSTANTS
-    ' These values define the "Physical vs Virtual" mapping of the application.
-    ' =========================================================================
-
-    ' Shared communication engine (Singleton-style access)
+    ' --- SHARED RESOURCES ---
+    ' Shared instance of the Serial Handler to ensure consistent communication
     Private Shared ReadOnly QyHandlerInstance As New QyHandler()
-
-    ' ToolTip provider to enhance User Experience (UX)
+    ' ToolTip manager to provide contextual help on UI elements
     Private ToolTipProvider As New ToolTip()
 
-    ' --- HARDWARE CALIBRATION CONSTANTS ---
-    ' RawMin/Max define the physical boundaries of your potentiometer sweep (Hex 0240 to FDC0).
+    ' --- CALIBRATED HARDWARE CONSTRAINTS ---
+    ' RawMin/Max define the physical potentiometer range (0240 - FDC0 Hex).
+    ' These are used to map 16-bit analog values to screen coordinates.
     Private Const RawMin As Integer = &H240
     Private Const RawMax As Integer = &HFDC0
 
-    ' --- DISPLAY BOUNDARIES ---
-    ' Fixed resolution based on the PictureBox designer size (800x403).
+    ' --- DISPLAY RESOLUTION CONSTRAINTS ---
+    ' Defines the virtual drawing surface area (800 pixels wide by 403 pixels high).
     Private Const MaxWidth As Integer = 800
     Private Const MaxHeight As Integer = 403
 
-    ' --- DRAWING STATE TRACKING ---
-    ' _currentX/Y store the "last known point" so GDI+ can draw a line to the "new point".
-    ' Initialized to -1 to prevent drawing a line from (0,0) on startup.
+    ' --- DRAWING STATE ---
+    ' Tracking variables for the "Pen" position. Set to -1 to avoid initial drift lines.
     Private _currentX As Integer = -1
     Private _currentY As Integer = -1
-
-    ' _isButtonLocked prevents "rapid-fire" triggering of Clear or Color dialogs
-    ' while a hardware button is held down.
+    ' Logic lock to prevent single button presses from triggering multiple events (Debounce)
     Private _isButtonLocked As Boolean = False
-
-    ' Current pen color, defaults to black
+    ' Stores the current user-selected pen color
     Private DrawColor As Color = Color.Black
 
-    ' =========================================================================
-    ' SECTION 2: FORM LIFE CYCLE
-    ' Logic for initializing the UI, ToolTips, and event subscriptions.
-    ' =========================================================================
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 1: FORM LIFE CYCLE & INITIALIZATION
+    ' -------------------------------------------------------------------------------------
 
     Private Sub EtchASketch_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-        ' Subscribe to the Serial Handler's data event
+        ' Attach the event listener for incoming hardware data packets
         AddHandler QyHandlerInstance.DataUpdated, AddressOf QyHandler_DataUpdated
 
-        ' UI Setup routines
+        ' Initialize UI components and state
         PopulateComPortMenu()
         InitializeToolTips()
         SetupAccessibility()
         UpdateUIState()
 
-        ' Default to Mouse Mode for immediate usability
+        ' Default the interface to Mouse Mode for standalone testing
         rbtnMouseMode.Checked = True
     End Sub
 
     Private Sub InitializeToolTips()
-        ' Provides contextual help when the user hovers over buttons
-        ToolTipProvider.SetToolTip(DisplayPictureBox, "Draw area: 800x403 resolution.")
-        ToolTipProvider.SetToolTip(SelectColorButton, "Changes the active ink color.")
-        ToolTipProvider.SetToolTip(DrawWaveformsButton, "Clears canvas and plots Trig functions.")
-        ToolTipProvider.SetToolTip(ClearButton, "Shake the window and erase the drawing.")
-        ToolTipProvider.SetToolTip(ExitButton, "Close the application.")
+        ' Set up hover-text for better user discoverability
+        ToolTipProvider.SetToolTip(DisplayPictureBox, "Draw within this area using the mouse or knobs.")
+        ToolTipProvider.SetToolTip(SelectColorButton, "Select a new color for drawing.")
+        ToolTipProvider.SetToolTip(DrawWaveformsButton, "Plot sine, cosine, and tangent waveforms.")
+        ToolTipProvider.SetToolTip(ClearButton, "Clear the drawing area.")
+        ToolTipProvider.SetToolTip(ExitButton, "Exit the application.")
     End Sub
 
     Private Sub SetupAccessibility()
-        ' Define logical tab flow for keyboard users
+        ' Configure keyboard tab indices and default form triggers (Enter/Escape)
         SelectColorButton.TabIndex = 0
         DrawWaveformsButton.TabIndex = 1
         ClearButton.TabIndex = 2
         ExitButton.TabIndex = 3
-
-        ' Map Enter and Escape keys to logical actions
         Me.AcceptButton = DrawWaveformsButton
         Me.CancelButton = ClearButton
     End Sub
 
-    ' =========================================================================
-    ' SECTION 3: WAVEFORM GENERATION (MATHEMATICAL PLOTTING)
-    ' Logic for clearing the canvas and rendering Sine, Cosine, and Tangent.
-    ' =========================================================================
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 2: WAVEFORM DRAWING LOGIC (MATHEMATICAL PLOTTING)
+    ' -------------------------------------------------------------------------------------
 
     ''' <summary>
-    ''' Renders a coordinate grid (graticule) and plots three trig waveforms.
+    ''' Clears the canvas and renders a 10x10 graticule followed by Red/Sine, 
+    ''' Green/Cosine, and Blue/Tangent waveforms.
     ''' </summary>
     Private Sub DrawWaveforms() Handles DrawWaveformsButton.Click, DrawWaveformsMenuItem.Click
         Try
-            ' CreateGraphics provides a temporary drawing surface
             Using g As Graphics = DisplayPictureBox.CreateGraphics()
                 Dim width As Integer = DisplayPictureBox.Width
                 Dim height As Integer = DisplayPictureBox.Height
 
-                ' STEP 1: Wipe the canvas clean
+                ' Wipe surface to white before drawing grid
                 g.Clear(Color.White)
-
-                ' STEP 2: Draw the Graticule (10x10 Grid)
                 Using pGrid As New Pen(Color.LightGray)
-                    ' Draw Vertical grid lines
+                    ' Draw vertical graticule lines
                     For x As Integer = 0 To width Step Math.Max(1, width \ 10)
                         g.DrawLine(pGrid, x, 0, x, height)
                     Next
-                    ' Draw Horizontal grid lines
+                    ' Draw horizontal graticule lines
                     For y As Integer = 0 To height Step Math.Max(1, height \ 10)
                         g.DrawLine(pGrid, 0, y, width, y)
                     Next
                 End Using
 
-                ' STEP 3: Plot the waves using mathematical Delegates (Func)
-                ' We scale Tangent by /10 because it approaches infinity quickly.
+                ' Iterate through the three primary trigonometric functions
+                ' Tangent is scaled (/10) to stay visible on the Y-axis
                 DrawWaveSegment(g, Color.Red, Function(x) Math.Sin(x))
                 DrawWaveSegment(g, Color.Green, Function(x) Math.Cos(x))
                 DrawWaveSegment(g, Color.Blue, Function(x) Math.Tan(x) / 10)
             End Using
         Catch ex As Exception
-            MessageBox.Show($"Plotting Error: {ex.Message}")
+            MessageBox.Show($"Error drawing waveforms: {ex.Message}")
         End Try
     End Sub
 
     ''' <summary>
-    ''' Helper to iterate across the X-axis and plot a specific math function.
+    ''' Generic plotter that maps a mathematical function across the PictureBox width.
     ''' </summary>
     Private Sub DrawWaveSegment(g As Graphics, color As Color, waveFunc As Func(Of Double, Double))
         Dim width As Integer = DisplayPictureBox.Width
@@ -144,25 +130,21 @@ Public Class EtchASketch
         Dim oldY As Integer = centerY
 
         Using pWave As New Pen(color, 1)
-            ' Loop through every pixel on the X-axis
             For x As Integer = 1 To width
                 Try
-                    ' Convert pixel X to a Radian value (0 to 2PI)
-                    Dim radians As Double = x * 2 * Math.PI / width
-
-                    ' Calculate Y and scale to 1/3 of the height for visibility
-                    Dim yVal As Double = waveFunc(radians)
+                    ' Convert X pixel to Radians (0 to 2PI)
+                    Dim yVal As Double = waveFunc(x * 2 * Math.PI / width)
+                    ' Scale Y result to 1/3 of the height for visual balance
                     Dim y As Integer = centerY - CInt(yVal * (height \ 3))
 
-                    ' CLAMPING: Prevents drawing outside the PictureBox bounds
+                    ' CLAMPING: Ensures lines don't wrap or draw outside bounds
                     y = Math.Max(0, Math.Min(y, height - 1))
 
-                    ' Draw the infinitesimal line segment from the previous point
                     g.DrawLine(pWave, oldX, oldY, x, y)
                     oldX = x
                     oldY = y
                 Catch
-                    ' Handle potential math overflows (especially in Tangent)
+                    ' Handle potential overflows (e.g., Tan approaching infinity)
                     oldX = x
                     oldY = centerY
                 End Try
@@ -170,32 +152,31 @@ Public Class EtchASketch
         End Using
     End Sub
 
-    ' =========================================================================
-    ' SECTION 4: SERIAL DATA PROCESSING (EXTERNAL MODE)
-    ' Logic for mapping hardware potentiometer values to screen coordinates.
-    ' =========================================================================
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 3: DATA & DRAWING LOGIC (EXTERNAL MODE)
+    ' -------------------------------------------------------------------------------------
 
     ''' <summary>
-    ''' Handles the async event from QyHandler. Marhsals data to UI thread.
+    ''' Event handler triggered at 50ms intervals by the QyHandler background thread.
     ''' </summary>
     Private Sub QyHandler_DataUpdated(a1 As String, a2 As String, di As String, dou As String)
-        ' Check if we are on the background thread; if so, Invoke back to the UI thread
+        ' Thread Marshalling: Ensure graphics calls happen on the UI thread
         If Me.InvokeRequired Then
             Me.Invoke(New Action(Of String, String, String, String)(AddressOf QyHandler_DataUpdated), a1, a2, di, dou)
             Return
         End If
 
-        ' Only update drawing if the user has physically toggled "External (PIC)"
+        ' Only process coordinate changes if External Mode is physically selected
         If rbtnExternalMode.Checked Then
-            ' Convert Hex "XX XX" string to a 16-bit Integer
+            ' Convert raw Hex "XX XX" to 16-bit Integers
             Dim valX As Integer = HexToFullValue(a1)
             Dim valY As Integer = HexToFullValue(a2)
 
-            ' Map the hardware range (0240-FDC0) to screen pixels (800x403)
+            ' Interpolate hardware values into pixel-space (0-800, 0-403)
             Dim targetX As Integer = MapToDimension(valX, RawMin, RawMax, MaxWidth)
             Dim targetY As Integer = MapToDimension(valY, RawMin, RawMax, MaxHeight)
 
-            ' Optimization: Only draw if the knob has actually moved to a new pixel
+            ' Optimization: Only draw if the movement spans at least one pixel
             If targetX <> _currentX OrElse targetY <> _currentY Then
                 If _currentX <> -1 AndAlso _currentY <> -1 Then
                     Using g As Graphics = DisplayPictureBox.CreateGraphics()
@@ -208,54 +189,41 @@ Public Class EtchASketch
                 _currentX = targetX
                 _currentY = targetY
             End If
-
-            ' Check for hardware button presses (Digital Input)
+            ' Process button inputs (Clear/Color)
             HandleButtonsActiveLow(di)
         End If
     End Sub
 
-    ' =========================================================================
-    ' SECTION 5: MOUSE & UI INTERACTION
-    ' Logic for manual drawing and switching between Control Modes.
-    ' =========================================================================
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 4: MOUSE SUPPORT & COMMON ACTIONS
+    ' -------------------------------------------------------------------------------------
 
     Private Sub DisplayPictureBox_MouseMove(sender As Object, e As MouseEventArgs) Handles DisplayPictureBox.MouseMove
-        ' Logic separation: Mouse only draws if MouseMode is active
+        ' logic isolation: Mouse only tracks if Mouse Mode is active
         If rbtnMouseMode.Checked Then
-            ' Draw only while Left Mouse Button is depressed
             If e.Button = MouseButtons.Left AndAlso _currentX <> -1 Then
                 Using g = DisplayPictureBox.CreateGraphics(), p = New Pen(DrawColor, 2)
                     g.DrawLine(p, _currentX, _currentY, e.X, e.Y)
                 End Using
             End If
-            ' Update tracking; ignored by External Mode via the If check
+            ' Update tracking variables only for Mouse-specific use
             _currentX = e.X
             _currentY = e.Y
         End If
     End Sub
 
-    Private Sub rbtnMode_CheckedChanged(sender As Object, e As EventArgs) Handles rbtnMouseMode.CheckedChanged, rbtnExternalMode.CheckedChanged
-        ' CRITICAL: Clear tracking on mode switch to prevent a "connecting line"
-        ' between the last mouse click and the current knob position.
-        _currentX = -1
-        _currentY = -1
-    End Sub
-
-    ' =========================================================================
-    ' SECTION 6: SUPPORTING ACTIONS & HELPERS
-    ' Auxiliary routines for UI effects, colors, and math.
-    ' =========================================================================
-
+    ''' <summary>
+    ''' Executes the window-shaking effect and erases the canvas.
+    ''' </summary>
     Private Sub ShakeAndClear() Handles ClearButton.Click, ClearMenuItem.Click
-        ' Visual feedback: Shakes the form window like a physical Etch A Sketch
         Dim start = Me.Left
+        ' Physical feedback: Mimics shaking the real Etch A Sketch toy
         For i = 0 To 5
             Me.Left = start + 10 : Thread.Sleep(35)
             Me.Left = start - 10 : Thread.Sleep(35)
         Next
         Me.Left = start
-        ' Refresh clears the PictureBox's persistent bitmap/surface
-        DisplayPictureBox.Refresh()
+        DisplayPictureBox.Refresh() ' Force a redraw of the background, clearing the ink
     End Sub
 
     Private Sub PromptForColor() Handles SelectColorButton.Click, SelectColorMenuItem.Click
@@ -264,43 +232,66 @@ Public Class EtchASketch
         End Using
     End Sub
 
+    Private Sub AboutMenuItem_Click(sender As Object, e As EventArgs) Handles AboutMenuItem.Click
+        ' Launches the project-specific About window
+        Using frmAbout As New AboutForm()
+            frmAbout.ShowDialog()
+        End Using
+    End Sub
+
+    Private Sub ExitApp(sender As Object, e As EventArgs) Handles ExitButton.Click, ExitMenuItem.Click
+        Me.Close()
+    End Sub
+
+    Private Sub rbtnMode_CheckedChanged(sender As Object, e As EventArgs) Handles rbtnMouseMode.CheckedChanged, rbtnExternalMode.CheckedChanged
+        ' SAFETY: Prevent "Teleport Lines" when switching from Mouse to Knobs
+        _currentX = -1 : _currentY = -1
+    End Sub
+
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 5: HELPERS & CONNECTION LOGIC
+    ' -------------------------------------------------------------------------------------
+
     ''' <summary>
-    ''' Maps a value from a hardware range to a screen range using Linear Interpolation.
+    ''' Maps a value from a hardware input range to a UI output range.
     ''' </summary>
     Private Function MapToDimension(val As Integer, inMin As Integer, inMax As Integer, outMax As Integer) As Integer
-        ' Force the value inside the calibrated floor and ceiling
         Dim clamped = Math.Max(inMin, Math.Min(val, inMax))
-        ' Standard mapping formula: (clamped - min) * (target_range / input_range)
+        ' Standard Linear Interpolation: (value - min) / (max - min) * targetRange
         Return CInt(Math.Round((clamped - inMin) * outMax / (inMax - inMin)))
     End Function
 
     ''' <summary>
-    ''' Inverts active-low logic bits and triggers button actions.
+    ''' Concatenates High/Low Hex bytes from the Serial stream into a single Integer.
+    ''' </summary>
+    Private Function HexToFullValue(hexPair As String) As Integer
+        Try
+            Dim parts() As String = hexPair.Split(" "c)
+            Return (Convert.ToInt32(parts(0), 16) << 8) Or Convert.ToInt32(parts(1), 16)
+        Catch
+            Return 0
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Processes Digital Input bitmasks where 0 = Pressed (Active-Low).
     ''' </summary>
     Private Sub HandleButtonsActiveLow(hex As String)
         Try
-            ' Board logic: 0xFF = Idle. 0xFE = Button1 pressed.
-            ' XOR with 0xFF flips the bits so 1 = Pressed.
-            Dim inverted = Convert.ToInt32(hex, 16) Xor &HFF
-
-            ' Check only the first 2 bits (Btn 1 and Btn 2)
-            If (inverted And 3) <> 0 Then
+            ' Invert bits: 0 becomes 1 for logical evaluation
+            Dim inverted = Convert.ToByte(hex, 16) Xor &HFF
+            If (inverted And 3) <> 0 Then ' Check if either Button 0 or 1 is pressed
                 If Not _isButtonLocked Then
-                    If (inverted And 1) <> 0 Then ShakeAndClear() ' Bit 0: Clear
-                    If (inverted And 2) <> 0 Then PromptForColor() ' Bit 1: Color
+                    If (inverted And 1) <> 0 Then ShakeAndClear() ' Button 1 triggers Shake
+                    If (inverted And 2) <> 0 Then PromptForColor() ' Button 2 triggers Color Picker
                     _isButtonLocked = True ' Lock until physical release
                 End If
             Else
-                _isButtonLocked = False ' Unlock once all buttons are FF
+                _isButtonLocked = False ' Unlock once buttons are released
             End If
         Catch
         End Try
     End Sub
-
-    ' =========================================================================
-    ' SECTION 7: CONNECTION MANAGEMENT
-    ' Dynamic COM port handling and status monitoring.
-    ' =========================================================================
 
     Public Sub PopulateComPortMenu()
         mnuConnect.DropDownItems.Clear()
@@ -315,10 +306,10 @@ Public Class EtchASketch
             QyHandlerInstance.Connect(portName)
             lblPortValue.Text = portName
             UpdateUIState()
-            ' Automatically switch to PIC control once connected
+            ' Auto-toggle to External mode upon successful handshake
             rbtnExternalMode.Checked = True
         Catch ex As Exception
-            MessageBox.Show($"Connection Error: {ex.Message}")
+            MessageBox.Show(ex.Message)
         End Try
     End Sub
 
@@ -330,6 +321,7 @@ Public Class EtchASketch
     End Sub
 
     Private Sub UpdateUIState()
+        ' Reflect connectivity in the UI status bar
         Dim isConn = QyHandlerInstance.IsConnected
         lblStatus.Text = If(isConn, "Connected", "Disconnected")
         lblStatus.ForeColor = If(isConn, Color.Green, Color.Red)
@@ -337,17 +329,9 @@ Public Class EtchASketch
         mnuDisconnect.Enabled = isConn
     End Sub
 
-    ' Show secondary forms
-    Private Sub AboutMenuItem_Click(sender As Object, e As EventArgs) Handles AboutMenuItem.Click
-        Using frmAbout As New AboutForm() : frmAbout.ShowDialog() : End Using
-    End Sub
-
     Private Sub mnuDiag_Click(sender As Object, e As EventArgs) Handles mnuDiag.Click
-        Dim f As New QyUI(QyHandlerInstance) : f.Show()
+        ' Opens the diagnostic monitor, passing the shared handler reference
+        Dim f As New QyUI(QyHandlerInstance)
+        f.Show()
     End Sub
-
-    Private Sub ExitApp(sender As Object, e As EventArgs) Handles ExitButton.Click, ExitMenuItem.Click
-        Me.Close()
-    End Sub
-
 End Class

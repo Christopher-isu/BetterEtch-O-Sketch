@@ -1,92 +1,181 @@
-﻿'ChristopherZ
+﻿'Christopher Z
 'Fall 2025
-'RCET3371
-'Better Etch-O-Sketch
+'Better Etch-O-Sketch Project
 'https://github.com/Christopher-isu/BetterEtch-O-Sketch.git
 
-Option Strict On
-Option Explicit On
-Imports Microsoft.VisualBasic.Logging
+Option Strict On ' Enforces strict data typing to ensure reliable hex-to-byte conversions
+Option Explicit On ' Requires explicit variable declarations for better maintainability
 
-''' <summary>
-''' The "Under the Hood" Diagnostic Form. 
-''' Displays raw serial traffic to verify hardware health and sensor stability.
-''' </summary>
+Imports System.IO.Ports ' Required for COM port awareness
+
+' =========================================================================================
+' CLASS: QyUI
+' PURPOSE: Provides a secondary diagnostic window for real-time hardware monitoring. 
+'          It displays raw sensor packets (Analog/Digital) and allows manual command 
+'          testing without interfering with the main EtchASketch drawing logic.
+' =========================================================================================
 Public Class QyUI
-    ' Reference to the active handler created by the EtchASketch form
-    Private _handler As QyHandler
+
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 1: FIELDS & REFERENCES
+    ' -------------------------------------------------------------------------------------
+
+    ' Holds a reference to the QyHandler instance owned by the EtchASketch form.
+    ' This ensures both forms look at the same physical serial connection.
+    Private ReadOnly _handlerRef As QyHandler
+
+    ' Alternating bit patterns (10101010 vs 01010101) used to test the board's LED outputs.
+    Private testOutputValue As Byte = CByte(&HAA)
+
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 2: CONSTRUCTOR & INITIALIZATION
+    ' Logic for linking to the existing serial engine and preparing the UI.
+    ' -------------------------------------------------------------------------------------
 
     ''' <summary>
-    ''' Constructor: Requires an existing handler so we aren't opening two serial ports.
+    ''' Constructor that dependency-injects the active serial handler.
     ''' </summary>
-    Public Sub New(h As QyHandler)
-        InitializeComponent()
-        _handler = h
+    ''' <param name="activeHandler">The running instance of QyHandler from the Main Form.</param>
+    Public Sub New(activeHandler As QyHandler)
+        InitializeComponent() ' Necessary for WinForms designer support
+
+        ' Link this diagnostic window to the shared communication engine
+        _handlerRef = activeHandler
+
+        ' Verify if we should allow testing commands based on connection state
+        If btnTestOutput IsNot Nothing Then
+            btnTestOutput.Enabled = _handlerRef.IsConnected
+        End If
+
+        ' Clear all text fields to their "neutral" hex states
+        ClearDataFields()
     End Sub
 
-    ' =========================================================================
-    ' SECTION 1: EVENT SUBSCRIPTIONS
-    ' =========================================================================
-
+    ''' <summary>
+    ''' Subscription point for hardware events.
+    ''' </summary>
     Private Sub QyUI_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-        ' Subscribe to both the data flow and the raw packet log
-        AddHandler _handler.DataUpdated, AddressOf OnDataUpdated
-        AddHandler _handler.PacketLogged, AddressOf OnPacketLogged
+        ' Only listen to the board if it is currently connected
+        If _handlerRef.IsConnected Then
+            ' Bind the UI update methods to the handler's event broadcasts
+            AddHandler _handlerRef.DataUpdated, AddressOf Handler_DataUpdated
+            AddHandler _handlerRef.PacketLogged, AddressOf Handler_PacketLogged
+        End If
     End Sub
 
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 3: DIAGNOSTIC COMMANDS
+    ' Methods that trigger manual requests or outputs to the PIC.
+    ' -------------------------------------------------------------------------------------
+
     ''' <summary>
-    ''' Updates the "Data Boxes" in the UI with the latest hex values.
+    ''' Sends a test byte to the board's digital outputs and toggles the pattern for the next click.
     ''' </summary>
-    Private Sub OnDataUpdated(a1 As String, a2 As String, di As String, dou As String)
-        ' Ensure thread safety: QyHandler events fire on a background thread
-        If Me.InvokeRequired Then
-            Me.Invoke(New Action(Of String, String, String, String)(AddressOf OnDataUpdated), a1, a2, di, dou)
+    Private Sub btnTestOutput_Click(sender As Object, e As EventArgs) Handles btnTestOutput.Click
+        If Not _handlerRef.IsConnected Then
+            MessageBox.Show("Not connected.")
             Return
         End If
 
-        ' Update the read-only textboxes for the user to see
-        txtAnalog1.Text = a1
-        txtAnalog2.Text = a2
-        txtDigitalIn.Text = di
-        txtDigitalOut.Text = dou
+        ' Send the current pattern (AA or 55) to the board
+        _handlerRef.SendDigitalOutput(testOutputValue)
+
+        ' Toggle the value: 10101010 becomes 01010101 and vice versa
+        testOutputValue = If(testOutputValue = CByte(&HAA), CByte(&H55), CByte(&HAA))
     End Sub
 
     ''' <summary>
-    ''' Appends raw Hex traffic to the scrolling log window.
+    ''' Directly queries the PIC for its internal status register (Command 0x10).
     ''' </summary>
-    Private Sub OnPacketLogged(sent As String, received As String)
-        If Me.InvokeRequired Then
-            Me.Invoke(New Action(Of String, String)(AddressOf OnPacketLogged), sent, received)
+    Private Sub btnStatus_Click(sender As Object, e As EventArgs) Handles btnStatus.Click
+        If Not _handlerRef.IsConnected Then
+            MessageBox.Show("Not connected.")
             Return
         End If
 
-        ' Format: [TX] 51 | [RX] 02 44
-        lstLog.Items.Add($"[TX] {sent} | [RX] {received}")
-
-        ' Auto-scroll to the bottom of the log
-        lstLog.SelectedIndex = lstLog.Items.Count - 1
+        ' Performs a synchronous read/write through the handler
+        Dim response As String = _handlerRef.SendReadStatus()
+        MessageBox.Show("Status Response: " & response)
     End Sub
 
-    ' =========================================================================
-    ' SECTION 2: HARDWARE TESTING
-    ' =========================================================================
+    Private Sub btnClose_Click(sender As Object, e As EventArgs)
+        Me.Close()
+    End Sub
+
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 4: THREAD-SAFE UI UPDATING
+    ' These methods handle data arriving from the background Serial thread.
+    ' -------------------------------------------------------------------------------------
 
     ''' <summary>
-    ''' Manually triggers a Digital Output command (LED test).
+    ''' Updates the text fields showing the interpreted Analog and Digital values.
     ''' </summary>
-    Private Sub btnSend_Click(sender As Object, e As EventArgs) Handles btnSend.Click
-        Try
-            ' Convert user-entered hex string (e.g., "FF") to a byte
-            Dim val As Byte = Convert.ToByte(txtSendHex.Text, 16)
-            _handler.SendDigitalOutput(val)
-        Catch
-            MessageBox.Show("Please enter a valid Hex byte (00-FF)")
-        End Try
+    Private Sub Handler_DataUpdated(analog1 As String, analog2 As String, digitalIn As String, digitalOut As String)
+        ' InvokeRequired check: Prevents cross-thread exceptions since Serial runs on a background thread
+        If Me.InvokeRequired Then
+            ' Use BeginInvoke for non-blocking UI updates
+            Me.BeginInvoke(New Action(Of String, String, String, String)(AddressOf Handler_DataUpdated),
+                             analog1, analog2, digitalIn, digitalOut)
+            Return
+        End If
+
+        ' Reflect the raw hex values in the diagnostic text boxes
+        txtAnalog1.Text = analog1
+        txtAnalog2.Text = analog2
+        txtDigitalIn.Text = digitalIn
+        txtDigitalOut.Text = digitalOut
     End Sub
 
-    Private Sub QyUI_FormClosing(sender As Object, e As FormClosingEventArgs) Handles MyBase.FormClosing
-        ' Unsubscribe to prevent memory leaks and background crashes
-        RemoveHandler _handler.DataUpdated, AddressOf OnDataUpdated
-        RemoveHandler _handler.PacketLogged, AddressOf OnPacketLogged
+    ''' <summary>
+    ''' Logs the exact Byte sequence sent and received into the scrolling listbox.
+    ''' </summary>
+    Private Sub Handler_PacketLogged(sentHex As String, receivedHex As String)
+        If Me.InvokeRequired Then
+            Me.BeginInvoke(New Action(Of String, String)(AddressOf Handler_PacketLogged),
+                             sentHex, receivedHex)
+            Return
+        End If
+
+        ' Format the entry for the log
+        Dim logEntry As String = "Sent: " & sentHex & " | Recv: " & receivedHex
+
+        ' Insert at index 0 so the most recent traffic is always at the top
+        lstPackets.Items.Insert(0, logEntry)
+
+        ' PERFORMANCE: Trim the list to 5 items to keep the diagnostic window lightweight
+        While lstPackets.Items.Count > 5
+            lstPackets.Items.RemoveAt(lstPackets.Items.Count - 1)
+        End While
+    End Sub
+
+    ' -------------------------------------------------------------------------------------
+    ' SECTION 5: CLEANUP & DISPOSAL
+    ' -------------------------------------------------------------------------------------
+
+    ''' <summary>
+    ''' Sets default text for the fields when the form resets or initializes.
+    ''' </summary>
+    Private Sub ClearDataFields()
+        txtAnalog1.Text = "00 00"
+        txtAnalog2.Text = "00 00"
+        txtDigitalIn.Text = "00"
+        txtDigitalOut.Text = "00"
+    End Sub
+
+    ''' <summary>
+    ''' Cleans up event subscriptions without closing the global Serial connection.
+    ''' </summary>
+    Private Sub QyUI_FormClosing(sender As Object, e As FormClosingEventArgs) Handles Me.FormClosing
+        ' IMPORTANT: We do NOT call _handlerRef.Disconnect() here.
+        ' Doing so would kill the drawing capabilities of the main EtchASketch form.
+        If _handlerRef IsNot Nothing Then
+            Try
+                ' Detach the event handlers to prevent memory leaks while the form is closed
+                RemoveHandler _handlerRef.DataUpdated, AddressOf Handler_DataUpdated
+                RemoveHandler _handlerRef.PacketLogged, AddressOf Handler_PacketLogged
+            Catch
+                ' Ignore errors if handlers were not attached
+            End Try
+        End If
     End Sub
 End Class
